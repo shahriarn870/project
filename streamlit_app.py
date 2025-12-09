@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import joblib
@@ -12,28 +11,19 @@ st.title("🔐 Phishing Website Detection")
 
 st.write("Use the form below to test whether a website is phishing or legitimate based on AI prediction.")
 
-model_choice = st.selectbox(
-    "Select Model",
-    ["Best Model", "XGBoost", "Random Forest", "Logistic Regression"]
-)
+# ✅ Only Logistic Regression
+model_choice = "Logistic Regression"
+st.write(f"Using model: {model_choice}")
 
-model_path = {
-    "Best Model": "models/phishing_model_best.pkl",
-    "XGBoost": "models/phishing_model_xgb.pkl",
-    "Random Forest": "models/phishing_model_rf.pkl",
-    "Logistic Regression": "models/phishing_model_lr.pkl"
-}[model_choice]
+# Direct paths for Logistic Regression only
+model_path = "models/phishing_model_lr.pkl"
+metrics_path = "metrics/metrics_lr.json"
 
-metrics_path = {
-    "Best Model": "metrics/metrics_rf.json",
-    "XGBoost": "metrics/metrics_xgb.json",
-    "Random Forest": "metrics/metrics_rf.json",
-    "Logistic Regression": "metrics/metrics_lr.json"
-}[model_choice]
-
+# Load model
 model = joblib.load(model_path)
 features = list(model.feature_names_in_)
 
+# Load metrics
 try:
     with open(metrics_path, "r") as f:
         metrics = json.load(f)
@@ -43,8 +33,10 @@ try:
 except Exception as e:
     st.warning(f"Could not load metrics: {e}")
 
+# Label mapping
 label_map = {-1: "Suspicious / Malicious", 0: "Neutral / Uncertain", 1: "Legitimate / Safe"}
 
+# Input form
 input_data = {}
 with st.form("phishing_form"):
     st.subheader("🔢 Feature Inputs")
@@ -57,22 +49,20 @@ with st.form("phishing_form"):
         )
     submitted = st.form_submit_button("🔎 Predict")
 
+# Prediction
 if submitted:
     input_df = pd.DataFrame([input_data])[features]
     prediction = model.predict(input_df)[0]
     st.success("✅ Prediction: **Phishing**" if prediction == 1 else "✅ Prediction: **Legitimate**")
 
+    # SHAP explanation
     with st.expander("🧠 Why this prediction?"):
         bg_data = pd.read_csv("data/phishing.csv")
         bg_data = bg_data.rename(columns={"Result": "Label"})
         bg_data["Label"] = bg_data["Label"].map({-1: 1, 1: 0})
         X_bg = bg_data[features]
 
-        if model_choice in ["XGBoost", "Best Model", "Random Forest"]:
-            explainer = shap.Explainer(model, X_bg, algorithm="tree")
-        else:
-            explainer = shap.Explainer(model, X_bg, algorithm="linear")
-
+        explainer = shap.Explainer(model, X_bg, algorithm="linear")
         shap_values = explainer(input_df)
 
         if hasattr(shap_values, "values"):
