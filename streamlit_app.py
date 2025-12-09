@@ -6,24 +6,26 @@ import shap
 import matplotlib.pyplot as plt
 import numpy as np
 
+# -------------------------------
+# Streamlit Page Setup
+# -------------------------------
 st.set_page_config(page_title="Phishing Detection", layout="centered")
 st.title("🔐 Phishing Website Detection")
 
 st.write("Use the form below to test whether a website is phishing or legitimate based on AI prediction.")
 
-# ✅ Only Logistic Regression
-model_choice = "Logistic Regression"
-st.write(f"Using model: {model_choice}")
-
-# Direct paths for Logistic Regression only
+# -------------------------------
+# Model Setup (Logistic Regression only)
+# -------------------------------
 model_path = "models/phishing_model_lr.pkl"
 metrics_path = "metrics/metrics_lr.json"
 
-# Load model
 model = joblib.load(model_path)
 features = list(model.feature_names_in_)
 
-# Load metrics
+# -------------------------------
+# Load Metrics
+# -------------------------------
 try:
     with open(metrics_path, "r") as f:
         metrics = json.load(f)
@@ -33,33 +35,49 @@ try:
 except Exception as e:
     st.warning(f"Could not load metrics: {e}")
 
-# Label mapping
-label_map = {-1: "Suspicious / Malicious", 0: "Neutral / Uncertain", 1: "Legitimate / Safe"}
+# -------------------------------
+# Label Mapping
+# -------------------------------
+# Adjust this mapping to match your training labels
+# Example: 0 = Legitimate, 1 = Phishing
+label_map = {0: "Legitimate / Safe", 1: "Phishing / Malicious"}
 
-# Input form
+# -------------------------------
+# Input Form
+# -------------------------------
 input_data = {}
 with st.form("phishing_form"):
     st.subheader("🔢 Feature Inputs")
     for feature in features:
         input_data[feature] = st.radio(
             feature,
-            options=[-1, 0, 1],
+            options=[0, 1],  # Only legitimate (0) or phishing (1)
             format_func=lambda x: label_map[x],
             key=feature
         )
     submitted = st.form_submit_button("🔎 Predict")
 
+# -------------------------------
 # Prediction
+# -------------------------------
 if submitted:
     input_df = pd.DataFrame([input_data])[features]
     prediction = model.predict(input_df)[0]
-    st.success("✅ Prediction: **Phishing**" if prediction == 1 else "✅ Prediction: **Legitimate**")
+    proba = model.predict_proba(input_df)[0]
 
-    # SHAP explanation
+    if prediction == 1:
+        st.error(f"🚨 Prediction: **Phishing** (Confidence: {proba[1]:.2f})")
+    else:
+        st.success(f"✅ Prediction: **Legitimate** (Confidence: {proba[0]:.2f})")
+
+    # -------------------------------
+    # SHAP Explanation
+    # -------------------------------
     with st.expander("🧠 Why this prediction?"):
         bg_data = pd.read_csv("data/phishing.csv")
         bg_data = bg_data.rename(columns={"Result": "Label"})
-        bg_data["Label"] = bg_data["Label"].map({-1: 1, 1: 0})
+        # Ensure labels match model training (0 = Legitimate, 1 = Phishing)
+        bg_data["Label"] = bg_data["Label"].map({-1: 1, 1: 0})  # Adjust if needed
         X_bg = bg_data[features]
 
         explainer = shap.Explainer(model, X_bg, algorithm="linear")
@@ -67,10 +85,7 @@ if submitted:
 
         if hasattr(shap_values, "values"):
             val = shap_values.values
-            if val.ndim == 3:
-                shap_val_row = val[0, :, 1]
-            else:
-                shap_val_row = val[0]
+            shap_val_row = val[0] if val.ndim == 2 else val[0, :, 1]
         else:
             shap_val_row = shap_values[0].values[0]
 
@@ -81,6 +96,7 @@ if submitted:
         shap.plots.bar(shap.Explanation(values=shap_val_row, feature_names=features), show=False)
         st.pyplot(plt.gcf(), clear_figure=True)
 
+        # Human-readable explanations for features
         feature_expl_dict = {
             "having_IP_Address": "the URL uses an IP address",
             "URL_Length": "the URL is unusually long",
